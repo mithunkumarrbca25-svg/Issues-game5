@@ -1,0 +1,172 @@
+name: Issues Game Controller
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  controller:
+    if: startsWith(github.event.comment.body, '/answer ')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check answer
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = context.issue.number;
+            const rawBody = context.payload.comment.body;
+            const body = rawBody.trim();
+            const submittedBy = context.payload.comment.user.login;
+            const commentId = context.payload.comment.id;
+            const isTesting = /(^|\n)TESTING\b/i.test(rawBody);
+
+            async function cleanupTestingComment() {
+              if (!isTesting) return;
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: commentId
+              });
+            }
+
+            const gameIssues = { 1: 1, 2: 2, 3: 3 };
+            const issueToGame = { 1: 1, 2: 2, 3: 3 };
+            const game = issueToGame[issueNumber];
+
+            if (!game) {
+              await cleanupTestingComment();
+              return;
+            }
+
+            const answer = body.slice('/answer '.length).split(/\r?\n/)[0].trim();
+            const normalize = value => (value || '').trim().toLowerCase();
+
+            const answers = {
+              1: process.env.GAME1_ANSWER,
+              2: process.env.GAME2_ANSWER,
+              3: process.env.GAME3_ANSWER
+            };
+
+            async function hasPassed(requiredGame) {
+              const requiredIssue = gameIssues[requiredGame];
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: requiredIssue,
+                per_page: 100
+              });
+
+              const marker = `<!-- ISSUES-GAME5-PASS game=${requiredGame} user=${submittedBy} -->`;
+              return comments.some(c => c.body && c.body.includes(marker));
+            }
+
+            if (game === 2 && !(await hasPassed(1))) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `❌ Complete Game 1 first, ${submittedBy}.`
+              });
+              await cleanupTestingComment();
+              return;
+            }
+
+            if (game === 3 && !(await hasPassed(2))) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `❌ Complete Game 2 first, ${submittedBy}.`
+              });
+              await cleanupTestingComment();
+              return;
+            }
+
+            if (game === 3) {
+              const commitLine = body.split(/\r?\n/).find(line => /^commit:\s*/i.test(line));
+              const match = commitLine && commitLine.match(/https:\/\/github\.com\/([^/]+)\/([^/]+)\/commit\/([0-9a-fA-F]{7,40})/);
+
+              if (!match) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `❌ Please include a valid commit link on the next line, like:\n\`Commit: https://github.com/your-username/your-repo/commit/<sha>\``
+                });
+                await cleanupTestingComment();
+                return;
+              }
+
+              try {
+                const commit = await github.rest.repos.getCommit({
+                  owner: match[1],
+                  repo: match[2],
+                  ref: match[3]
+                });
+
+                const hasFinalAnswer = (commit.data.files || []).some(file => file.filename === 'final-answer.txt');
+                if (!hasFinalAnswer) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    body: `❌ The linked commit does not contain final-answer.txt, ${submittedBy}.`
+                  });
+                  await cleanupTestingComment();
+                  return;
+                }
+              } catch (error) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `❌ I could not verify that commit link. Make sure the repository and commit are public and the URL is correct.`
+                });
+                await cleanupTestingComment();
+                return;
+              }
+            }
+
+            if (normalize(answer) !== normalize(answers[game])) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `❌ Not quite, ${submittedBy}. Check the challenge and try again.`
+              });
+              await cleanupTestingComment();
+              return;
+            }
+
+            const marker = `<!-- ISSUES-GAME5-PASS game=${game} user=${submittedBy} -->`;
+
+            if (game === 3) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `✅ Correct, ${submittedBy}! Game 3 complete. 🎉\n\n${marker}\n\nYour event submission is now ready for organizer verification.`
+              });
+            } else {
+              const nextGame = game + 1;
+              const nextIssue = gameIssues[nextGame];
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `✅ Correct, ${submittedBy}! Game ${game} complete.\n\n${marker}\n\n➡️ Game ${nextGame} is now unlocked: #${nextIssue}`
+              });
+            }
+
+            await cleanupTestingComment();
+        env:
+          GAME1_ANSWER: ${{ secrets.GAME1_ANSWER }}
+          GAME2_ANSWER: ${{ secrets.GAME2_ANSWER }}
+          GAME3_ANSWER: ${{ secrets.GAME3_ANSWER }}
