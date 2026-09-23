@@ -1,0 +1,36 @@
+FINAL CHALLENGE
+
+1. Open the commit that added this final_clue.txt file.
+2. Copy the first 6 characters of that commit's SHA.
+3. Convert each character using this key:
+
+0 = A
+1 = B
+2 = C
+3 = D
+4 = E
+5 = F
+6 = G
+7 = H
+8 = I
+9 = J
+a = K
+b = L
+c = M
+d = N
+e = O
+f = P
+
+4. Take the first 3 converted letters.
+5. Add the secret word given by the organizer at the venue.
+6. Add the last 3 converted letters.
+
+Your final answer is:
+
+FIRST 3 LETTERS + SECRET WORD + LAST 3 LETTERS
+
+Once you solve it:
+- Create a file named final-answer.txt
+- Write only your final answer inside it.
+- Commit the file to the repository.
+- In Game 3, submit your answer and the URL of the commit.
