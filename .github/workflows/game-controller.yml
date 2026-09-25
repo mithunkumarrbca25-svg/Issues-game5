@@ -24,10 +24,7 @@ jobs:
             const body = rawBody.trim();
             const submittedBy = context.payload.comment.user.login;
             const commentId = context.payload.comment.id;
-            const isTesting = /(^|\n)TESTING\b/i.test(rawBody);
-
-            async function cleanupTestingComment() {
-              if (!isTesting) return;
+            async function deleteSubmission() {
               await github.rest.issues.deleteComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -40,7 +37,7 @@ jobs:
             const game = issueToGame[issueNumber];
 
             if (!game) {
-              await cleanupTestingComment();
+              await deleteSubmission();
               return;
             }
 
@@ -73,7 +70,7 @@ jobs:
                 issue_number: issueNumber,
                 body: `❌ Complete Game 1 first, ${submittedBy}.`
               });
-              await cleanupTestingComment();
+              await deleteSubmission();
               return;
             }
 
@@ -84,7 +81,7 @@ jobs:
                 issue_number: issueNumber,
                 body: `❌ Complete Game 2 first, ${submittedBy}.`
               });
-              await cleanupTestingComment();
+              await deleteSubmission();
               return;
             }
 
@@ -99,7 +96,7 @@ jobs:
                   issue_number: issueNumber,
                   body: `❌ Please include a valid commit link on the next line, like:\n\`Commit: https://github.com/your-username/your-repo/commit/<sha>\``
                 });
-                await cleanupTestingComment();
+                await deleteSubmission();
                 return;
               }
 
@@ -118,7 +115,7 @@ jobs:
                     issue_number: issueNumber,
                     body: `❌ The linked commit does not contain final-answer.txt, ${submittedBy}.`
                   });
-                  await cleanupTestingComment();
+                  await deleteSubmission();
                   return;
                 }
               } catch (error) {
@@ -128,7 +125,7 @@ jobs:
                   issue_number: issueNumber,
                   body: `❌ I could not verify that commit link. Make sure the repository and commit are public and the URL is correct.`
                 });
-                await cleanupTestingComment();
+                await deleteSubmission();
                 return;
               }
             }
@@ -140,13 +137,14 @@ jobs:
                 issue_number: issueNumber,
                 body: `❌ Not quite, ${submittedBy}. Check the challenge and try again.`
               });
-              await cleanupTestingComment();
+              await deleteSubmission();
               return;
             }
 
             const marker = `<!-- ISSUES-GAME5-PASS game=${game} user=${submittedBy} -->`;
 
             if (game === 3) {
+              await deleteSubmission();
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -157,15 +155,14 @@ jobs:
               const nextGame = game + 1;
               const nextIssue = gameIssues[nextGame];
 
+              await deleteSubmission();
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `✅ Correct, ${submittedBy}! Game ${game} complete.\n\n${marker}\n\n➡️ Game ${nextGame} is now unlocked: #${nextIssue}`
+                body: `✅ Correct, ${submittedBy}! Game ${game} complete.\n\n${marker}\n\n🔓 **Game ${nextGame} is now unlocked!**\n\n👉 [**Go to Game ${nextGame}**](https://github.com/${context.repo.owner}/${context.repo.repo}/issues/${nextIssue})`
               });
             }
-
-            await cleanupTestingComment();
         env:
           GAME1_ANSWER: ${{ secrets.GAME1_ANSWER }}
           GAME2_ANSWER: ${{ secrets.GAME2_ANSWER }}
